@@ -112,6 +112,12 @@ slac -d -c /etc/slac.toml mda < message.eml
 
 ## Review
 
+The TUI provides split inbox/spam views, a message detail pane, and correction
+actions for moving misclassified mail. The screenshot below uses fictitious
+sample messages.
+
+![SLAC TUI preview](docs/slac-tui-preview.png)
+
 ```sh
 slac -c /etc/slac.toml tui
 slac -c /etc/slac.toml list --mailbox spam
