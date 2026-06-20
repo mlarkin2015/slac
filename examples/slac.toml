@@ -1,0 +1,37 @@
+[llm]
+endpoint = "http://127.0.0.1:8080/v1/chat/completions"
+model = "local-model"
+# api_key = "replace-me"
+temperature = 0.0
+timeout_seconds = 30
+# Some local OpenAI-compatible servers do not support response_format.
+json_response_format = true
+
+[classification]
+observe_only = true
+add_headers = true
+# Start quarantine trials conservatively. This threshold only quarantines when
+# observe_only is false and the verdict policy below also matches.
+spam_threshold = 0.95
+max_prompt_bytes = 49152
+max_body_bytes = 32768
+
+[delivery]
+command = "/usr/libexec/mail.local"
+args = ["-f", "{sender}", "{user}"]
+
+[quarantine]
+path = "{home}/spam"
+require_verdict = "spam"
+
+[feedback]
+enabled = true
+max_examples = 20
+max_bytes = 8192
+
+rules = [
+  "Unexpected attachments, archive files, or executable payloads increase spam likelihood.",
+  "Credential harvesting, urgent account warnings, and payment redirection are strong spam or phishing signals.",
+  "Legitimate transactional mail often has consistent sender identity, clear purpose, and matching headers.",
+  "Bulk marketing from unknown senders is more likely spam when unsubscribe and sender identity are unclear.",
+]
