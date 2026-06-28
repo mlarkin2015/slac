@@ -1,0 +1,292 @@
+.\"	$OpenBSD$
+.\"
+.\" Copyright (c) 2026
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: June 28 2026 $
+.Dt SLAC.TOML 5
+.Os
+.Sh NAME
+.Nm slac.toml
+.Nd spam classifier delivery agent configuration file
+.Sh DESCRIPTION
+.Nm
+is the configuration file for
+.Xr slac 8 .
+The file uses TOML syntax and is divided into tables for classifier,
+delivery, quarantine, and review feedback behavior.
+.Pp
+When no explicit file is given with
+.Fl c ,
+.Xr slac 8
+searches:
+.Pp
+.Bl -enum -compact
+.It
+.Pa ~/.config/slac/slac.toml
+.It
+.Pa /etc/slac.toml
+.El
+.Pp
+If neither file exists,
+built-in defaults are used.
+In MDA mode, read or parse errors are logged and delivery falls back to the
+built-in defaults.
+Review commands report configuration errors directly.
+.Sh TABLES
+.Ss llm
+The
+.Ic llm
+table configures the OpenAI-compatible chat completions endpoint.
+.Bl -tag -width json_response_format
+.It Ic endpoint
+HTTP URL for the chat completions endpoint.
+The default is
+.Pa http://127.0.0.1:8080/v1/chat/completions .
+.It Ic api_key
+Optional bearer token used for the
+.Ql Authorization
+header.
+No API key is sent by default.
+.It Ic model
+Model name sent in the chat completion request.
+The default is
+.Dq local-model .
+.It Ic temperature
+Sampling temperature sent in the request.
+The default is
+.Dq 0.0 .
+.It Ic timeout_seconds
+HTTP timeout for classifier requests.
+The default is
+.Dq 30 .
+.It Ic json_response_format
+When true,
+request
+.Dq json_object
+response format from the endpoint.
+Some local OpenAI-compatible servers do not support this field.
+The default is true.
+.El
+.Ss classification
+The
+.Ic classification
+table controls header insertion, prompt size, and quarantine eligibility.
+.Bl -tag -width max_prompt_bytes
+.It Ic observe_only
+When true,
+.Xr slac 8
+classifies and annotates messages but always delivers normally.
+This should be used while testing a new classifier.
+The default is true.
+.It Ic add_headers
+When true,
+add
+.Ql X-SLAC-*
+classification or classifier-error headers to delivered or quarantined mail.
+The default is true.
+.It Ic spam_threshold
+Minimum classifier spam probability required before quarantine is considered.
+The default is
+.Dq 0.85 .
+.It Ic max_prompt_bytes
+Maximum number of message bytes included in the classifier prompt.
+The default is
+.Dq 49152 .
+.It Ic max_body_bytes
+Maximum number of message body bytes included in the classifier prompt.
+The default is
+.Dq 32768 .
+.El
+.Ss delivery
+The
+.Ic delivery
+table configures normal local delivery.
+.Bl -tag -width command
+.It Ic command
+Program executed for normal delivery.
+The message is written to the program's standard input.
+The default is
+.Pa /usr/libexec/mail.local .
+.It Ic args
+Array of arguments passed to
+.Ic command
+after template expansion.
+The default is:
+.Bd -literal -offset indent
+["-f", "{sender}", "{user}"]
+.Ed
+.El
+.Ss quarantine
+The
+.Ic quarantine
+table configures spam storage.
+.Bl -tag -width require_verdict
+.It Ic path
+Path to an mbox used for quarantined messages.
+Templates are expanded before use.
+The default is
+.Pa {home}/spam .
+.It Ic require_verdict
+Verdict policy required for quarantine after the spam threshold has been met.
+Valid values are:
+.Pp
+.Bl -tag -width spam_or_unsure -compact
+.It Cm spam
+Only quarantine messages with verdict
+.Dq spam .
+.It Cm spam_or_unsure
+Quarantine messages with verdict
+.Dq spam
+or
+.Dq unsure .
+.It Cm any
+Quarantine any message whose spam probability meets the threshold,
+regardless of verdict.
+.El
+.Pp
+The default is
+.Cm spam .
+.El
+.Ss feedback
+The
+.Ic feedback
+table controls use of user correction history in classifier prompts.
+.Bl -tag -width max_examples
+.It Ic enabled
+When true,
+recent correction records from
+.Pa ~/.local/share/slac/corrections.jsonl
+are included in the prompt as bounded examples.
+The default is true.
+.It Ic max_examples
+Maximum number of correction records to include.
+The default is
+.Dq 20 .
+.It Ic max_bytes
+Maximum correction-history bytes to include.
+The default is
+.Dq 8192 .
+.El
+.Ss rules
+.Ic rules
+is a top-level array of strings.
+Each string is added to the classifier prompt as local policy guidance.
+If omitted,
+a small built-in rule set is used.
+.Sh TEMPLATES
+The following template strings are expanded in
+.Ic delivery.args
+and
+.Ic quarantine.path :
+.Bl -tag -width "{recipient}" -compact
+.It Ic {sender}
+The
+.Ev SENDER
+environment variable.
+.It Ic {user}
+The
+.Ev USER
+environment variable, or
+.Ev LOGNAME
+if
+.Ev USER
+is unset.
+.It Ic {recipient}
+The
+.Ev RECIPIENT
+environment variable.
+.It Ic {home}
+The
+.Ev HOME
+environment variable.
+.El
+.Pp
+Unknown template strings are left unchanged.
+.Sh FILES
+.Bl -tag -width "~/.local/share/slac/corrections/messages/" -compact
+.It Pa /etc/slac.toml
+System configuration file.
+.It Pa ~/.config/slac/slac.toml
+Per-user configuration file.
+.It Pa ~/.local/share/slac/corrections.jsonl
+Correction history read when feedback is enabled.
+.It Pa ~/.local/share/slac/corrections/messages/
+Corrected message snapshots.
+.El
+.Sh EXAMPLES
+A conservative initial configuration that annotates mail but never
+quarantines:
+.Bd -literal -offset indent
+[llm]
+endpoint = "http://127.0.0.1:8080/v1/chat/completions"
+model = "local-model"
+temperature = 0.0
+timeout_seconds = 30
+json_response_format = true
+
+[classification]
+observe_only = true
+add_headers = true
+spam_threshold = 0.95
+max_prompt_bytes = 49152
+max_body_bytes = 32768
+
+[delivery]
+command = "/usr/libexec/mail.local"
+args = ["-f", "{sender}", "{user}"]
+
+[quarantine]
+path = "{home}/spam"
+require_verdict = "spam"
+
+[feedback]
+enabled = true
+max_examples = 20
+max_bytes = 8192
+
+rules = [
+  "Credential harvesting is a strong spam or phishing signal.",
+  "Legitimate transactional mail has clear sender identity.",
+]
+.Ed
+.Pp
+After observing classifier behavior, enable quarantine:
+.Bd -literal -offset indent
+[classification]
+observe_only = false
+add_headers = true
+spam_threshold = 0.95
+
+[quarantine]
+path = "{home}/spam"
+require_verdict = "spam"
+.Ed
+.Pp
+Disable
+.Ic json_response_format
+for an endpoint that rejects the OpenAI response format field:
+.Bd -literal -offset indent
+[llm]
+endpoint = "http://127.0.0.1:8080/v1/chat/completions"
+model = "local-model"
+json_response_format = false
+.Ed
+.Sh SEE ALSO
+.Xr smtpd.conf 5 ,
+.Xr mail.local 8 ,
+.Xr slac 8 ,
+.Xr smtpd 8
+.Sh AUTHORS
+.An Mike Larkin Aq Mt mlarkin@nested.page

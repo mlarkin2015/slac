@@ -1,0 +1,291 @@
+.\"	$OpenBSD$
+.\"
+.\" Copyright (c) 2026
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: June 28 2026 $
+.Dt SLAC 8
+.Os
+.Sh NAME
+.Nm slac
+.Nd spam limiting and classification mail delivery agent
+.Sh SYNOPSIS
+.Nm
+.Op Fl d
+.Op Fl c Ar file
+.Op Cm mda | web | tui
+.Nm
+.Op Fl c Ar file
+.Cm list
+.Fl -mailbox Cm inbox | spam
+.Nm
+.Op Fl c Ar file
+.Cm show
+.Fl -mailbox Cm inbox | spam
+.Fl -id Ar number
+.Nm
+.Op Fl c Ar file
+.Cm move
+.Fl -mailbox Cm inbox | spam
+.Fl -id Ar number
+.Fl -to Cm inbox | spam
+.Op Fl -reason Ar text
+.Sh DESCRIPTION
+.Nm
+is a local mail delivery agent for
+.Xr smtpd 8 .
+It reads one message from standard input,
+classifies the message using an OpenAI-compatible chat completions endpoint,
+adds
+.Ql X-SLAC-*
+headers when configured to do so,
+and then either delegates normal delivery to
+.Xr mail.local 8
+or appends the message to a quarantine mbox.
+.Pp
+When invoked without a command,
+.Nm
+runs in
+.Cm mda
+mode.
+This is the mode intended for use from an
+.Ic mda
+action in
+.Xr smtpd.conf 5 .
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl c Ar file , Fl -config Ar file
+Read configuration from
+.Ar file .
+Without this option,
+.Nm
+searches
+.Pa ~/.config/slac/slac.toml
+and then
+.Pa /etc/slac.toml .
+If no configuration file is found, built-in defaults are used.
+.It Fl d , Fl -debug
+Also log diagnostic messages to standard error.
+This is useful when running
+.Nm
+by hand with a saved message.
+.It Fl h , Fl -help
+Display usage information and exit.
+.El
+.Pp
+The commands are as follows:
+.Bl -tag -width Ds
+.It Cm mda
+Read a message from standard input and process it for delivery.
+The message is normally delivered by the command configured in
+.Xr slac.toml 5 .
+If quarantine is enabled and the classifier result meets the configured
+threshold and verdict policy,
+the message is appended to the configured spam mbox instead.
+.Pp
+Classifier, configuration, and quarantine failures are fail-open in MDA mode:
+.Nm
+logs the error and attempts normal delivery so that mail is not lost.
+.It Cm web
+Reserved for a future web interface.
+The command is accepted but currently exits unsuccessfully.
+.It Cm tui
+Open an interactive terminal interface for reviewing the user's inbox and
+spam mbox.
+.It Cm list Fl -mailbox Cm inbox | spam
+List message summaries from a logical mailbox as tab-separated output.
+The
+.Cm inbox
+mailbox is
+.Pa /var/mail/$USER
+or
+.Pa /var/mail/$LOGNAME .
+The
+.Cm spam
+mailbox is the configured quarantine path.
+The printed message IDs are scan indexes and should be used immediately.
+.It Cm show Fl -mailbox Cm inbox | spam Fl -id Ar number
+Write the selected message to standard output.
+.It Xo
+.Cm move
+.Fl -mailbox Cm inbox | spam
+.Fl -id Ar number
+.Fl -to Cm inbox | spam
+.Op Fl -reason Ar text
+.Xc
+Move the selected message between the inbox and spam mbox.
+The destination copy receives correction headers and a correction record is
+written under
+.Pa ~/.local/share/slac .
+Moving from
+.Cm spam
+to
+.Cm inbox
+records a corrected verdict of
+.Dq ham .
+Moving from
+.Cm inbox
+to
+.Cm spam
+records a corrected verdict of
+.Dq spam .
+.El
+.Sh MDA OPERATION
+In
+.Cm mda
+mode,
+.Nm
+builds a bounded prompt from the message and the configured rules,
+sends it to the configured chat completions endpoint,
+and expects a JSON classification containing
+.Va spam_probability ,
+.Va verdict ,
+and
+.Va reasons .
+The verdict is one of
+.Dq spam ,
+.Dq ham ,
+or
+.Dq unsure .
+.Pp
+If
+.Ic classification.add_headers
+is true,
+.Nm
+adds headers such as:
+.Pp
+.Bl -bullet -compact
+.It
+.Ql X-SLAC-Status
+.It
+.Ql X-SLAC-Action
+.It
+.Ql X-SLAC-Verdict
+.It
+.Ql X-SLAC-Spam-Probability
+.It
+.Ql X-SLAC-Spam-Threshold
+.It
+.Ql X-SLAC-Reasons
+.El
+.Pp
+If classification fails and header insertion is enabled,
+.Nm
+adds
+.Ql X-SLAC-Status: classifier-error
+and delivers normally.
+.Pp
+Quarantine is considered only when
+.Ic classification.observe_only
+is false.
+The message must have a spam probability greater than or equal to
+.Ic classification.spam_threshold
+and the verdict must match
+.Ic quarantine.require_verdict .
+.Sh REVIEW INTERFACE
+The
+.Cm tui
+command displays inbox and spam mbox summaries with a detail pane.
+The following keys are supported:
+.Bl -tag -width PageDown -compact
+.It Ic Tab
+Switch between inbox and spam.
+.It Ic Up , Ic Down , Ic j , Ic k
+Move the selection.
+.It Ic PageUp , Ic PageDown
+Move by a page or scroll the preview.
+.It Ic Enter
+Open the selected message preview.
+.It Ic m
+Move the selected message to the other mailbox.
+.It Ic r
+Refresh mailbox contents.
+.It Ic q
+Quit, or close the preview.
+.It Ic Esc
+Cancel a move reason prompt.
+.El
+.Sh FILES
+.Bl -tag -width "~/.local/share/slac/corrections/messages/" -compact
+.It Pa /etc/slac.toml
+System configuration file.
+.It Pa ~/.config/slac/slac.toml
+Per-user configuration file.
+.It Pa /var/mail/$USER
+Default inbox inspected by review commands.
+.It Pa ~/spam
+Default quarantine mbox.
+.It Pa ~/.local/share/slac/corrections.jsonl
+Correction history used for bounded classifier feedback.
+.It Pa ~/.local/share/slac/corrections/messages/
+Corrected message snapshots named by SHA-256 digest.
+.El
+.Sh EXIT STATUS
+.Ex -std slac
+.Pp
+Command-line usage errors exit with
+.Dv EX_USAGE .
+Operational failures exit with
+.Dv EX_TEMPFAIL .
+.Sh EXAMPLES
+Classify and deliver a saved message using an explicit configuration:
+.Pp
+.Dl $ slac -d -c /etc/slac.toml mda < message.eml
+.Pp
+Configure
+.Xr smtpd 8
+to use
+.Nm
+for local delivery:
+.Bd -literal -offset indent
+action "local_slac" mda "/usr/local/bin/slac -c /etc/slac.toml mda" alias <aliases>
+match for local action "local_slac"
+.Ed
+.Pp
+Validate and reload
+.Xr smtpd 8
+after editing
+.Pa /etc/mail/smtpd.conf :
+.Bd -literal -offset indent
+# smtpd -n
+# rcctl reload smtpd
+.Ed
+.Pp
+Start in observe-only mode in
+.Xr slac.toml 5 ,
+then inspect delivered messages for
+.Ql X-SLAC-*
+headers.
+After the classifier behavior is acceptable,
+disable observe-only mode and use a conservative spam threshold.
+.Pp
+Review quarantined mail:
+.Bd -literal -offset indent
+$ slac -c /etc/slac.toml list --mailbox spam
+$ slac -c /etc/slac.toml show --mailbox spam --id 0
+$ slac -c /etc/slac.toml move --mailbox spam --id 0 --to inbox \e
+    --reason "false positive"
+.Ed
+.Pp
+Open the interactive review interface:
+.Pp
+.Dl $ slac -c /etc/slac.toml tui
+.Sh SEE ALSO
+.Xr slac.toml 5 ,
+.Xr smtpd.conf 5 ,
+.Xr mail.local 8 ,
+.Xr smtpd 8
+.Sh AUTHORS
+.An Mike Larkin Aq Mt mlarkin@nested.page
