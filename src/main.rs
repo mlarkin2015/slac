@@ -35,6 +35,7 @@ mod mbox;
 mod mda;
 mod prompt;
 mod review;
+mod sysexits;
 mod tui;
 
 use std::env;
@@ -93,7 +94,7 @@ fn main() {
 
     if let Err(err) = result {
         logger.err(&format!("slac failed: {err}"));
-        std::process::exit(75);
+        std::process::exit(sysexits::EX_TEMPFAIL);
     }
 }
 

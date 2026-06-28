@@ -26,6 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 use crate::config::DeliveryConfig;
+use crate::sysexits::EX_TEMPFAIL;
 use std::env;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -33,8 +34,9 @@ use std::process::{Command, Stdio};
 /// Delegates final delivery to the configured local delivery command.
 ///
 /// `raw_mail` is written unchanged to the child process stdin. Postcondition:
-/// returns the child exit status, or `75` if the process was terminated without
-/// a normal exit code. The caller decides how to interpret delivery failure.
+/// returns the child exit status, or `EX_TEMPFAIL` if the process was
+/// terminated without a normal exit code. The caller decides how to interpret
+/// delivery failure.
 pub fn deliver(raw_mail: &[u8], config: &DeliveryConfig) -> Result<i32, String> {
     let args = expand_args(&config.args);
     let mut child = Command::new(&config.command)
@@ -57,7 +59,7 @@ pub fn deliver(raw_mail: &[u8], config: &DeliveryConfig) -> Result<i32, String> 
         .wait()
         .map_err(|err| format!("failed waiting for delivery command: {err}"))?;
 
-    Ok(status.code().unwrap_or(75))
+    Ok(status.code().unwrap_or(EX_TEMPFAIL))
 }
 
 pub fn expand_args(args: &[String]) -> Vec<String> {
