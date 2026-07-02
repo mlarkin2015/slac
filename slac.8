@@ -24,7 +24,7 @@
 .Nm
 .Op Fl d
 .Op Fl c Ar file
-.Op Cm mda | web | tui
+.Op Cm mda | web | tui | test
 .Nm
 .Op Fl c Ar file
 .Cm list
@@ -104,6 +104,22 @@ The command is accepted but currently exits unsuccessfully.
 .It Cm tui
 Open an interactive terminal interface for reviewing the user's inbox and
 spam mbox.
+.It Cm test
+Load the configured classifier settings and run one live probe against the
+OpenAI-compatible chat completions endpoint.
+The probe prints the loaded configuration path, endpoint, model, timeout, and
+response-format setting to standard error.
+It exits successfully only when the server responds with parseable SLAC
+classification JSON.
+No mail is delivered or quarantined.
+.Pp
+For HTTP 404 failures,
+.Nm
+prints endpoint hints, including whether the configured URI appears to be only
+an API base such as
+.Pa /v1
+or already includes
+.Pa /chat/completions .
 .It Cm list Fl -mailbox Cm inbox | spam
 List message summaries from a logical mailbox as tab-separated output.
 The
@@ -243,6 +259,10 @@ Operational failures exit with
 Classify and deliver a saved message using an explicit configuration:
 .Pp
 .Dl $ slac -d -c /etc/slac.toml mda < message.eml
+.Pp
+Test the configured classifier endpoint without delivering mail:
+.Pp
+.Dl $ slac -c /etc/slac.toml test
 .Pp
 Configure
 .Xr smtpd 8

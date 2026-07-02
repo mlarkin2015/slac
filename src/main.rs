@@ -35,6 +35,7 @@ mod mbox;
 mod mda;
 mod prompt;
 mod review;
+mod selftest;
 mod sysexits;
 mod tui;
 
@@ -46,6 +47,7 @@ pub enum Mode {
     Mda,
     Web,
     Tui,
+    Test,
     List,
     Show,
     Move,
@@ -81,6 +83,13 @@ fn main() {
             Err("web mode is not implemented yet".into())
         }
         Mode::Tui => tui::run(cli.config_path.as_deref()),
+        Mode::Test => {
+            let result = selftest::run(cli.config_path.as_deref());
+            if let Err(err) = &result {
+                eprintln!("slac test: failed: {err}");
+            }
+            result
+        }
         Mode::List => review::list(cli.config_path.as_deref(), cli.mailbox.as_deref()),
         Mode::Show => review::show(cli.config_path.as_deref(), cli.mailbox.as_deref(), cli.id),
         Mode::Move => review::move_message(
@@ -93,7 +102,9 @@ fn main() {
     };
 
     if let Err(err) = result {
-        logger.err(&format!("slac failed: {err}"));
+        if cli.mode != Mode::Test {
+            logger.err(&format!("slac failed: {err}"));
+        }
         std::process::exit(sysexits::EX_TEMPFAIL);
     }
 }
@@ -116,6 +127,7 @@ where
             "mda" => mode = Some(Mode::Mda),
             "web" => mode = Some(Mode::Web),
             "tui" => mode = Some(Mode::Tui),
+            "test" => mode = Some(Mode::Test),
             "list" => mode = Some(Mode::List),
             "show" => mode = Some(Mode::Show),
             "move" => mode = Some(Mode::Move),
@@ -175,7 +187,8 @@ where
 
 fn print_usage() {
     eprintln!(
-        "usage: slac [-d] [-c path] [mda|web|tui]\n\
+        "usage: slac [-d] [-c path] [mda|web|tui|test]\n\
+         test: slac [-c path] test\n\
          review: slac [-c path] list --mailbox inbox|spam\n\
          review: slac [-c path] show --mailbox inbox|spam --id N\n\
          review: slac [-c path] move --mailbox inbox|spam --id N --to inbox|spam [--reason text]\n\
@@ -226,5 +239,12 @@ mod tests {
         assert_eq!(cli.id, Some(3));
         assert_eq!(cli.to_mailbox.as_deref(), Some("inbox"));
         assert_eq!(cli.reason.as_deref(), Some("false positive"));
+    }
+
+    #[test]
+    fn parses_test_mode() {
+        let cli = parse_cli(["-c", "/etc/slac.toml", "test"].map(String::from)).unwrap();
+        assert_eq!(cli.mode, Mode::Test);
+        assert_eq!(cli.config_path.unwrap(), PathBuf::from("/etc/slac.toml"));
     }
 }

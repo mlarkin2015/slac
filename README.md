@@ -110,6 +110,17 @@ Debug mode also logs to stderr:
 slac -d -c /etc/slac.toml mda < message.eml
 ```
 
+Test the configured classifier endpoint without delivering mail:
+
+```sh
+slac -c /etc/slac.toml test
+```
+
+The test command loads the same configuration as MDA mode, prints the endpoint
+and model settings to stderr, sends one synthetic classifier probe, and reports
+common endpoint mistakes such as using `/v1` instead of
+`/v1/chat/completions`.
+
 ## Review
 
 The TUI provides split inbox/spam views, a message detail pane, and correction
